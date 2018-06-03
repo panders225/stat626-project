@@ -1,0 +1,22 @@
+---
+title: "STAT626_MRI"
+author: "Philip Anderson; panders2@tamu.edu"
+date: "6/3/2018"
+output: pdf_document
+---
+
+```{r setup, message=FALSE}
+library("tidyverse")
+```
+
+Import the data
+
+
+```{r}
+
+```
+
+
+
+
+
