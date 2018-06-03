@@ -7,16 +7,185 @@ output: pdf_document
 
 ```{r setup, message=FALSE}
 library("tidyverse")
+library("astsa")
 ```
+
+## Objective:
+I am doing a freestyle EDA process to explore the data and get myself and everyone else more acquainted with it.  I'll focus on the techniques we have covered so far.
 
 Import the data
 
+```{r}
+# read in the data
+mri <- read.csv("/Users/panders2/Documents/schools/tamu/stat_626/project/stat_626_proj/mri_dat_one.csv")
+# update fields
+names(mri) <- c("hour", "minute", "freq", "int_pressure", "atm_pressure", "tot_pressure", "tesla")
+# take a look
+str(mri)
+head(mri)
+summary(mri)
+```
+
+## Remaking Eric's Plots
+### Primary Plot First
 
 ```{r}
+plot(mri$freq, col="firebrick4"
+    , main="Magnetic Field - Frequency vs. Time"
+    , xlab="Time"
+    , ylab="Frequency"
+     )
+mtext("Primary Variable of Interest")
+```
 
+### Covariate Plots Second
+
+```{r}
+plot(mri$atm_pressure, col="darkgreen", type="b"
+    , main="Atmospheric Pressure vs. Time"
+    , xlab="Time"
+    , ylab="Frequency"
+     )
+mtext("Secondary Variable of Interest")
 ```
 
 
+```{r}
+plot(mri$int_pressure[1:1600], col="darkblue", type="b"
+    , main="Controlled Internal Pressure vs. Time"
+    , xlab="Time"
+    , ylab="Frequency"
+     )
+mtext("Secondary Variable of Interest")
+```
 
+### Empirical Autocorrelation Functions
 
+```{r}
+freq_acf <- acf(mri$freq, lag.max=50
+                , main="ACF for Magnetic Frequency" 
+                )
+```
+
+So our main variable has a LOT of serial correlation and is far from stationary.  This could be because of time iteration.  Consider aggregation to every five minutes as Eric mentioned.
+
+ACF for Secondary Variables
+
+```{r}
+acf(mri$atm_pressure, lag.max=50
+    , main="ACF for Atmospheric Pressure"
+    )
+```
+
+Same story as above.
+
+```{r}
+acf(mri$int_pressure[1:1600], lag.max=100
+   , main="ACF - Internal Pressure" 
+  )
+    
+```
+
+ACF for Internal Pressure variable is interesting - reflects the cyclic nature of series.
+
+## Primary Series Manipulations
+
+### Detrending + First Differences
+
+```{r}
+par(mfrow=c(3,1))
+# plot 1
+astsa::tsplot(mri$freq, main="Original Frequency Data")
+
+# plot 2
+detrend_fit <- lm(mri$freq ~ time(mri$freq))
+detrend_series <- resid(detrend_fit)
+astsa::tsplot(detrend_series, main="Detrended Series")
+
+# plot 3
+diff_series <- diff(mri$freq)
+astsa::tsplot(diff_series, main="Differenced Series")
+```
+
+The strange point in the middle may be influencing the images.  It may be important, but lets take it out and try again.
+
+```{r}
+print(length(mri$freq))
+# take away minimum value
+mri_freq2 <- mri$freq[-(which.min(mri$freq))]
+# make sure that worked
+print(length(mri_freq2))
+```
+
+```{r}
+par(mfrow=c(3,1))
+# plot 1
+astsa::tsplot(mri_freq2, main="Original Frequency Data")
+
+# plot 2
+detrend_fit <- lm(mri_freq2 ~ time(mri_freq2))
+detrend_series <- resid(detrend_fit)
+astsa::tsplot(detrend_series, main="Detrended Series")
+
+# plot 3
+diff_series <- diff(mri_freq2)
+astsa::tsplot(diff_series, main="Differenced Series")
+```
+
+That's somewhat better.  Detrending did nothing but change the axis.  Differencing looks stationary?
+
+```{r}
+acf(diff_series)
+```
+
+Hard to see, but the ACF at a lot of these lag values is significant.  We are, however, much closer to stationarity than we were. 
+
+## Formal Stationarity Check 
+
+```{r}
+Box.test(mri$freq, type="Ljung-Box")
+Box.test(detrend_series, type="Ljung-Box")
+Box.test(diff_series, type="Ljung-Box")
+```
+
+My understanding of this procedure is that we are looking for a high p-value.  We are consistently rejecting the null that the data are independently distributed (https://en.wikipedia.org/wiki/Ljung–Box_test).
+
+```{r}
+x <- rnorm(500, 0 ,1 )
+Box.test(x, type="Ljung-Box")
+```
+
+## Cross-Correlation Functions
+
+```{r}
+ccf(mri$freq, mri$atm_pressure
+    , main="CCF between Magnetic Frequency and Atmospheric Pressure"
+      )
+```
+
+Yikes.
+
+```{r}
+ccf(mri$freq, mri$int_pressure, lag.max=50
+    , main="CCF between Magnetic Frequency and Internal Pressure"
+    )
+```
+
+Also yikes, but less so.
+
+Let's swap out the main series for the differenced one.
+
+```{r}
+ccf(diff_series, mri$atm_pressure
+    , main="CCF between Differenced Series and Atmospheric Pressure"
+    )
+```
+
+```{r}
+ccf(diff_series, mri$int_pressure
+    , main="CCF between Differenced Series and Internal Pressure"
+    )
+```
+
+This looks promising.
 
