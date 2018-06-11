@@ -135,7 +135,13 @@ astsa::tsplot(diff_series, main="Differenced Series")
 That's somewhat better.  Detrending did nothing but change the axis.  Differencing looks stationary?
 
 ```{r}
-acf(diff_series)
+astsa::tsplot(diff_series, main="Differenced Series", col="firebrick4")
+```
+
+
+
+```{r}
+acf(diff_series, main="ACF for Differenced Series")
 ```
 
 Hard to see, but the ACF at a lot of these lag values is significant.  We are, however, much closer to stationarity than we were. 
