@@ -1,7 +1,6 @@
 ---
-title: "Yearning for Stationarity"
+title: "Searching for Stationarity"
 author: "Philip Anderson; panders2@tamu.edu"
-date: "6/10/2018"
 output: pdf_document
 ---
 
@@ -12,7 +11,7 @@ library("GGally")
 library("tseries")
 ```
 
-Objective: I'm going to mess around with some of the newer stuff we have covered.  Also going to build on some of the regression work that Colby shared and see if I can add anything there.
+Objective: I'm going to mess around with some of the Week 3 material - basically looking to see if I can get the autocorrelation function to have no significant lags.
 
 ```{r}
 # read in the data
@@ -21,7 +20,7 @@ mri <- read.csv("/Users/panders2/Documents/schools/tamu/stat_626/project/stat_62
 names(mri) <- c("hour", "minute", "freq", "int_pressure", "atm_pressure", "tot_pressure", "tesla")
 ```
 
-With an initial look at the data, I think we need to smooth it to eliminate the abberration at time ~950.  Let's take a look.
+With an initial look at the data, I think we need to smooth it to eliminate the abberration at time index ~950.  
 
 ```{r}
 astsa::tsplot(mri$freq)
@@ -64,7 +63,7 @@ lines(mri$freq_15[900:1000], lwd=1.25, col="green")
 legend("bottomleft", c("bw=0.5", "bw=5", "bw=15"), lwd=rep(1.5, 3) , col=c("blue", "red", "green"))
 ```
 
-Kernel smoothing is one viable option - localized regression is another.  Let's do that and compare.  Like kernel bandwidth parameter, the lowess regressor incorporates a parameter that influences smoothness, (_f_).  It simply measures what proportion of the array points we should use to influence the smooth at each estimation point.
+Kernel smoothing is one viable option - localized regression is another.  Let's do that and compare.  Like the kernel bandwidth parameter, the lowess regressor incorporates a parameter that influences smoothness, (_f_).  It simply measures what proportion of the array points we should use to influence the smooth at each estimation point.
 
 ```{r}
 astsa::tsplot(mri$freq, lwd=2)
@@ -85,48 +84,50 @@ mri$freq_low_2 <- lowess(mri$freq, f=0.2)$y
 
 ```
 
-We now have a handful of smoothed data points.  Let's see if we can get to stationarity using those as our base.  Taking differences seemed promising in the past so let's do that again.
+We now have a handful of smoothed data points.  Let's see if we can get to stationarity using those as our base.  Taking first differences seemed promising in the past so let's do that again.
 
 ```{r}
 astsa::tsplot(diff(mri$freq))
 ```
 
-This looks stationary, but it may just be an axis thing.  Let's adjust it and revisit. 
+This looks stationary aside from the same problem area, but it may just be an axis thing.  Let's adjust it and revisit. 
 
 ```{r}
 astsa::tsplot(diff(mri$freq), ylim=c(-1.5,1.5))
 ```
 
-This is not looking quite as stationary as before, which we have already seen the empirical ACF will corroborate.
+There looks to be some autocorrelation when we get up close.
 
 ```{r}
-acf(diff(mri$freq))
+acf2(diff(mri$freq))
 ```
 
-It's tough to see in the differenced time series plot, but we do have a strong and significant negative lag at lag 1.
+It's tough to see in the differenced time series plot, but we do have a strong and significant negative lag at lag 1.  Perhaps the differenced series is an MA(1) model?  We can look at this idea later.
 
-Let's repeat for some of our smoothed series and see.
+Let's repeat this exercise for some of our smoothed series and see.
 
 ```{r}
 # kernel smoother with bandwidth of 15
 astsa::tsplot(diff(mri$freq_15))
 ```
 
-Not good.
+Clear trend.
 
 ```{r}
-acf(diff(mri$freq_15))
+acf2(diff(mri$freq_15))
 ```
 
-Let's just try the simpler moving average instead of fancy things.
+Now suggestive of an AR(p) model.
+
+Let's just try the simpler moving average smoother instead of fancy things.
 
 ```{r}
-# 6 point MA
+# 12 point MA
 mri$freq_ma <- stats::filter(mri$freq, sides=2, filter=rep(1/12, 12))
 astsa::tsplot(diff(mri$freq_ma))
 ```
 
-Bleh.
+Similar story.
 
 Ironic, but let's add noise to the smoothed series and see if that helps.
 
@@ -135,203 +136,44 @@ Ironic, but let's add noise to the smoothed series and see if that helps.
 test <- mri$freq_low_1 + rnorm(length(mri$freq_point5))
 astsa::tsplot(test)
 astsa::tsplot(diff(test))
-acf(diff(test))
+acf2(diff(test))
 ```
 
-That was promising for a brief second.
+That was promising for a brief second.  Let's try _detrending_ instead of differencing.
 
 ```{r}
 lin_mod <- lm(mri$freq ~ 0 + mri$atm_pressure + mri$int_pressure)
 astsa::tsplot(diff(lin_mod$residuals))
-acf(diff(lin_mod$residuals))
+acf2(diff(lin_mod$residuals))
 ```
+
+Note that the MA(q) model ACF cuts off after lag q, while the PACF tails off.  This could related to that.
+
+Detrend with one of the smoothers.
 
 ```{r}
 lin_mod2 <- lm(mri$freq_point5 ~ time(mri$freq_point5))
 astsa::tsplot(diff(lin_mod2$residuals))
-acf(diff(lin_mod2$residuals, differences=2))
+acf2(diff(lin_mod2$residuals, differences=2))
 
 ```
 
+Suggests MA(2) model.
+
+Split the series into halves and see if anything changes.
 
 ```{r}
-adf.test(diff(mri$freq))
-kpss.test(diff(mri$freq))
-```
-
-
-```{r}
-acf(diff(mri$freq[1:800]))
-acf(diff(mri$freq[801:1600]))
+acf2(diff(mri$freq[1:800]))
+acf2(diff(mri$freq[801:1600]))
 
 ```
 
+Try structural modeling.
 
-I have found structural modeling to be the most interesting thing covered in this course so far.  I have found that the _decompose_ function requires evidence of periodicity that we do not have.
-
-```{r, error=F}
+```{r, error=T}
 decompose(mri$freq_low_2)
 ```
 
-
-
-```{r}
-
-```
-
-
-```{r}
-astsa::tsplot(mri$freq)
-astsa::tsplot(log(mri$freq))
-astsa::tsplot(diff(log(mri$freq), lag=1))
-
-```
-
-
-```{r}
-head(mri)
-```
-
-```{r}
-GGally::ggpairs(mri[, c(3,4,5)])
-```
-
-
-```{r}
-# regression of freq on time
-
-lin_mod_1 <- lm(mri$freq ~ time(mri$freq))
-summary(lin_mod_1)
-plot(lin_mod_1)
-```
-
-```{r}
-
-semi_mod <- mgcv::gam(mri$freq ~ s(time(mri$freq)))
-plot(semi_mod)
-summary(semi_mod)
-
-```
-
-```{r}
-ts.plot(mri$freq[940:960])
-
-```
-
-Let's kernel-smooth that abberration out of there.
-
-```{r}
-astsa::tsplot(mri$freq)
-lines(ksmooth(time(mri$freq), mri$freq, "normal", bandwidth=10), lwd=2, col=4)
-#lines(ksmooth(time(soi), soi, "normal", bandwidth=1), lwd=2, col=4)
-```
-
-```{r}
-freq_reduced <- mri$freq[900:1100]
-ts.plot(freq_reduced)
-lines(ksmooth(time(freq_reduced), freq_reduced, "normal", bandwidth=5), lwd=1.5, col="blue") 
-```
-
-```{r}
-#mri$smooth_freq <- ksmooth(mri$freq, )
-
-mri$smooth_freq <- ksmooth(time(mri$freq), mri$freq, kerne="normal", bandwidth=15)$y
-```
-
-```{r}
-astsa::tsplot(mri$freq)
-astsa::tsplot(mri$smooth_freq)
-```
-
-```{r}
-astsa::tsplot(mri$smooth_freq)
-astsa::tsplot(diff(mri$smooth_freq))
-
-acf(diff(mri$smooth_freq))
-
-```
-
-
-```{r}
-
-linear <- lm(mri$smooth_freq ~ mri$int_pressure + mri$atm_pressure)
-summary(linear)
-plot(linear)
-```
-
-
-```{r}
-ccf.Freq.IntPrs = ccf(mri$freq, mri$int_pressure)
-```
-
-```{r}
-#index = which(ccf.Freq.IntPrs$acf == max(ccf.Freq.IntPrs$acf))
-which(ccf.Freq.IntPrs$acf == max(ccf.Freq.IntPrs$acf))
-```
-
-```{r}
-#lagData = ts.intersect(cbind(Frequency,AtmPrss),lagIntPrss = lag(IntPrss,sel.lag))
-
-
-
-```
-
-
-```{r}
-astsa::tsplot(mri$freq)
-lines(lowess(mri$freq, f=0.2))
-
-```
-
-
-```{r}
-mini <- data.frame(
-    sf_diff=diff(mri$smooth_freq)
-    , int_diff=diff(mri$int_pressure)
-    , atm_diff=diff(mri$atm_pressure)
-    )
-GGally::ggpairs(mini)
-
-```
-
-```{r}
-lag2.plot(mri$smooth_freq, mri$atm_pressure, 8)
-```
-
-
-
-
-```{r}
-Frequency <- mri$tesla
-AtmPrss <- mri$atm_pressure
-IntPrss <- mri$int_pressure
-
-n = min(which(IntPrss == min(IntPrss)))-1
-Frequency = Frequency[1:n]
-AtmPrss = AtmPrss[1:n]
-IntPrss = IntPrss[1:n]
-
-```
-
-
-
-```{r}
-(n <- min(which(IntPrss == min(IntPrss))) - 1)
-Frequency = Frequency[1:n]
-AtmPrss = AtmPrss[1:n]
-IntPrss = IntPrss[1:n]
-
-
-
-```
-
-
-```{r}
-
-ccf(Frequency, IntPrss)
-ccf(Frequency, AtmPrss)
-```
-
-
+Good to know.
 
 

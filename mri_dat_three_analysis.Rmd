@@ -1,0 +1,104 @@
+---
+title: "mri_dat_three_analysis"
+author: "Philip Anderson; panders2@tamu.edu"
+date: "6/17/2018"
+output: pdf_document
+---
+
+# Objective
+The purpose of this analysis is to try out some regressions of the data.
+
+```{r setup, include=FALSE}
+library("astsa")
+library("GGally")
+library("tidyverse")
+library("mgcv")
+```
+
+```{r}
+# read in the data
+mri <- read.csv("/Users/panders2/Documents/schools/tamu/stat_626/project/stat_626_proj/mri_dat_one.csv")
+# update field names
+names(mri) <- c("hour", "minute", "freq", "int_pressure", "atm_pressure", "tot_pressure", "tesla")
+```
+
+First, replace the issue values with their imputations.
+
+```{r}
+tsplot(mri$freq[940:950])
+```
+
+The problems are the points at index 945.
+
+```{r}
+mri$freq[944] <- ((mri$freq[943] + mri$freq[945]) / 2)
+```
+
+```{r}
+astsa::tsplot(mri$freq)
+```
+
+That's better.
+
+```{r}
+# parwise scatter plots of our data
+GGally::ggpairs(mri%>%dplyr::select("freq", "int_pressure", "atm_pressure"))
+```
+
+These are not particularly helpful, probably because of the time series nature of the data.
+
+Fit naive linear regressions
+
+```{r}
+basic <- lm(mri$freq ~ time(mri$freq))
+plot(density(resid(basic)))
+astsa::tsplot(resid(basic))
+```
+
+Errors are obviously serially correlated.  Now try this with the differenced series to see if it makes a difference.
+
+```{r}
+
+diff_mod <- lm(diff(mri$freq) ~ time(mri$freq[2:length(mri$freq)]))
+
+plot(density(resid(diff_mod)))
+astsa::tsplot(resid(diff_mod))
+```
+
+Looks better.
+
+The ACF+PACF of the differenced series suggest an MA(1) model; let's try fitting this.
+
+```{r}
+serial_mod <- sarima(
+                    xdata=diff(mri$freq)
+                    , p=c(0)
+                    , d=c(0)
+                    , q=c(1)
+                    , xreg=c(time(mri$freq[2:length(mri$freq)]))
+                    )
+```
+Looks like there are some problems.  
+
+Try semi-parametric regression (Generalized Additive Model) to see if we can get some explanation for the strange-looking scatterplot.  I'm not sure if there is a specialized version of these for time series, and we haven't covered them, but they might be somewhat helpful.
+
+```{r}
+semi_mod <- mgcv::gam(freq ~ s(int_pressure) + s(atm_pressure), data=mri)
+plot(semi_mod, shade=T)
+```
+
+
+```{r}
+semi_mod2 <- mgcv::gam(diff(freq) ~ s(int_pressure[2:length(int_pressure)]) + 
+                         s(atm_pressure[2:length(atm_pressure)])
+                       , data=mri)
+plot(semi_mod, shade=T)
+```
+
+The graphics are showing the individual effects of each of the predictors on the outcome of _frequency_, controlling for other predictors.  The bottom of each graphic has a "rug" that will show you where the data points lie.  
+
+In both cases, the effect of _internal_pressure_ is unclear - most of the points are centered around a few small values.  Atmospheric pressure seems to tell a more interesting story - as we increase the value of it, its effects on the predictor increase.
+
+
+
+
