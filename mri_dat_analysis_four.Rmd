@@ -1,0 +1,152 @@
+---
+title: "mri_dat_analysis_four"
+author: "Philip Anderson; panders2@tamu.edu"
+date: "6/30/2018"
+output: pdf_document
+---
+
+# Objective 
+This analysis will synthesize a lot of the work that has been done so far
+
+a) Data Prep + EDA
+
+b) Model Fitting 
+
+b2) exogenous predictors 
+
+c) Forecasting 
+
+d) Seasonal Decomposition
+
+
+```{r setup, include=FALSE}
+library("astsa")
+library("tidyverse")
+```
+
+# Data Prep + EDA
+
+```{r}
+#read in the data
+mri <- read.csv("/Users/panders2/Documents/schools/tamu/stat_626/project/stat_626_proj/mri_dat_one.csv")
+names(mri) <- c("hour", "minute", "freq", "int_pressure", "atm_pressure", "tot_pressure", "tesla")
+str(mri)
+```
+
+
+```{r}
+astsa::tsplot(mri$freq, main="Time-Index Plot of Data")
+```
+
+Right away - we can see that we have a data issue around index 950 that we are going to have to deal with.  Let's take care of that right away.
+
+```{r}
+astsa::tsplot(mri$freq[920:970], main="Frequency Time Index Plot 920:970")
+```
+
+Two issues here - one massive drop in value, followed by a larger than typical value.  I am going to replace the successive values with the average of the point that appeared before the abberation and the point immediately after.
+
+
+```{r}
+mri$freq[944] <- ((mri$freq[943] + mri$freq[946]) / 2)
+mri$freq[945] <- ((mri$freq[943] + mri$freq[946]) / 2)
+astsa::tsplot(mri$freq[920:970], main="Frequency Time Index Plot 920:970 - modified data")
+astsa::tsplot(mri$freq, main="Time Index Plot - modified data")
+```
+
+
+
+Now that we have prepped the data, we can start to assess some of its properties.  Before attempting any sort of transformation, plot the ACF.
+
+```{r, echo=F, results='hide'}
+astsa::acf1(mri$freq, main="Frequency ACF Plot")
+```
+
+We can see from the time-plot that we have non-stationary data; from the ACF, we can see that we have an issue with autocovariance as well.  Both suggest that we have a non-stationary time series.  We can now employ first-differencing as a sensible technique for getting us to a stationary series.
+
+```{r}
+astsa::tsplot(diff(mri$freq), main="First-Differenced Series")
+```
+
+The last point is messing up the differencing, so I am going to truncate the series and leave this behind.
+
+```{r}
+diff_freq <- diff(mri$freq)[1:(length(mri$freq)-2)]
+astsa::tsplot(diff_freq, main="First-Differenced Frequency Time Plot")
+```
+
+This looks a lot more stationary than what we saw before.  There may be some pattern within - the ACF/PACF should help us uncover information about this.
+
+```{r, results='hide'}
+astsa::acf2(diff_freq, main="ACF + PACF for First Differenced Series")
+```
+
+From the above, we can see that the ACF trails off, while the PACF cuts off after about lag 15.  This would suggest an AR(15) model, which is the type of thing we have been advised to avoid.  Let's try a "seasonal" lag of 15 seconds. 
+
+```{r, results='hide'}
+astsa::tsplot(diff(diff_freq, 15), main="Seasonally and First-differenced time series")
+astsa::acf2(diff(diff_freq, 15), main="Seasonally and First-differenced time series")
+```
+
+# Model Fitting
+
+The ACF cuts off after around lag 1_s_ (_s_=15) and the PACF tails off with .  This suggests an SMA model.  We can easily try out a few models and see how the fits are.
+
+```{r,  fig.show='hide', results='hide'}
+# save the vector we care about
+dd_freq <- diff(diff_freq, 15)
+# lay the base to build on later - we are going to append results to this
+# filled in as cbind(AR order, MA order, Seasonal Period, model AIC, model BIC)
+puzzle <- cbind(0, 0, 0, 0, 0)
+
+# seasonal order
+for (k in c(15)) {
+# AR order
+  for (i in 0:3) {
+# MA order    
+    for (j in 0:3) {
+      # fit SARIMA model.  The optimizer will sometimes fail, so I have thrown this
+      # in a try() wrapper to manage the errors and get through everything 
+      smod <- try(sarima(xdata=dd_freq, p=i, d=1, q=j, P=i, D=1, Q=j, S=k), silent=T)
+        # if model fit successfully
+        if(class(smod)=="list") {
+            piece <- cbind(i, j, k, smod$AIC, smod$BIC)
+                                }
+        # if model fit failed
+        else {
+            piece <- cbind(i, j, k, 0, 0)
+             }
+      # stack
+      puzzle <- rbind(puzzle, piece)
+    }
+  }
+}
+# nb: this will take time to run.  R is apparently bad with loops, and the try function 
+# takes time to work its magic
+```
+
+```{r}
+puzzle2 <- data.frame(puzzle)
+names(puzzle2) <- c("i", "j", "k", "AIC", "BIC")
+# 
+puzzle2 %>% dplyr::arrange(BIC, AIC)
+```
+
+From the above, it appears that SARIMA(0,1,2) x (0, 1, 2)_15 was 'best'
+
+```{r, results='hide'}
+smod <- sarima(xdata=dd_freq, p=0, d=1, q=2, P=0, D=1, Q=2, S=15)
+print(smod)
+```
+
+The diagnostics all look good, with the exception of the Ljung-Box p-values, which ideally would be > 0.05.
+
+
+# Forecasting
+
+Let's take a look at what a forecast for this series would look like.
+
+```{r, results='hide'}
+sarima.for(xdata=dd_freq, p=0, d=1, q=2, P=0, D=1, Q=2, S=15, n.ahead=15)
+```
+
