@@ -8,15 +8,15 @@ output: pdf_document
 # Objective 
 This analysis will synthesize a lot of the work that has been done so far
 
-a) Data Prep + EDA
+* Data Prep + EDA
 
-b) Model Fitting 
+* Model Fitting 
 
-b2) exogenous predictors 
+** exogenous predictors 
 
-c) Forecasting 
+* Forecasting 
 
-d) Seasonal Decomposition
+* Seasonal Decomposition
 
 
 ```{r setup, include=FALSE}
@@ -38,7 +38,7 @@ str(mri)
 astsa::tsplot(mri$freq, main="Time-Index Plot of Data")
 ```
 
-Right away - we can see that we have a data issue around index 950 that we are going to have to deal with.  Let's take care of that right away.
+Right away - we can see that we have a data issue around index 950 that we are going to have to deal with.  Let's take care of that.
 
 ```{r}
 astsa::tsplot(mri$freq[920:970], main="Frequency Time Index Plot 920:970")
@@ -90,9 +90,9 @@ astsa::acf2(diff(diff_freq, 15), main="Seasonally and First-differenced time ser
 
 # Model Fitting
 
-The ACF cuts off after around lag 1_s_ (_s_=15) and the PACF tails off with .  This suggests an SMA model.  We can easily try out a few models and see how the fits are.
+The ACF cuts off after around lag 1 _s_ (_s_=15) and the PACF tails off.  This suggests an SMA model.  We can easily try out a few models and see how the fits are.
 
-```{r,  fig.show='hide', results='hide'}
+```{r,  fig.show='hide', results='hide', message=F, warning=F}
 # save the vector we care about
 dd_freq <- diff(diff_freq, 15)
 # lay the base to build on later - we are going to append results to this
@@ -107,7 +107,7 @@ for (k in c(15)) {
     for (j in 0:3) {
       # fit SARIMA model.  The optimizer will sometimes fail, so I have thrown this
       # in a try() wrapper to manage the errors and get through everything 
-      smod <- try(sarima(xdata=dd_freq, p=i, d=1, q=j, P=i, D=1, Q=j, S=k), silent=T)
+      smod <- try(sarima(xdata=mri$freq, p=i, d=1, q=j, P=i, D=1, Q=j, S=k), silent=T)
         # if model fit successfully
         if(class(smod)=="list") {
             piece <- cbind(i, j, k, smod$AIC, smod$BIC)
@@ -121,8 +121,8 @@ for (k in c(15)) {
     }
   }
 }
-# nb: this will take time to run.  R is apparently bad with loops, and the try function 
-# takes time to work its magic
+# this will take some time to run
+
 ```
 
 ```{r}
@@ -135,7 +135,12 @@ puzzle2 %>% dplyr::arrange(BIC, AIC)
 From the above, it appears that SARIMA(0,1,2) x (0, 1, 2)_15 was 'best'
 
 ```{r, results='hide'}
-smod <- sarima(xdata=dd_freq, p=0, d=1, q=2, P=0, D=1, Q=2, S=15)
+smod <- sarima(xdata=mri$freq, p=0, d=1, q=0, P=0, D=1, Q=0, S=15)
+print(smod)
+```
+
+```{r, results='hide', warning=F}
+smod <- sarima(xdata=mri$freq, p=2, d=1, q=2, P=2, D=1, Q=2, S=15)
 print(smod)
 ```
 
@@ -147,6 +152,6 @@ The diagnostics all look good, with the exception of the Ljung-Box p-values, whi
 Let's take a look at what a forecast for this series would look like.
 
 ```{r, results='hide'}
-sarima.for(xdata=dd_freq, p=0, d=1, q=2, P=0, D=1, Q=2, S=15, n.ahead=15)
+sarima.for(xdata=mri$freq, p=0, d=1, q=2, P=0, D=1, Q=2, S=15, n.ahead=15)
 ```
 
