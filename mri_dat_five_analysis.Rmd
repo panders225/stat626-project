@@ -1,0 +1,91 @@
+---
+title: "mri_dat_analysis_five"
+author: "Philip Anderson; panders2@tamu.edu"
+date: "7/20/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library("astsa")
+library("tidyverse")
+library("tseries")
+library("fGarch")
+```
+
+# Data Prep + EDA
+
+```{r}
+#read in the data
+mri <- read.csv("/Users/panders2/Documents/schools/tamu/stat_626/project/stat_626_proj/mri_dat_one.csv")
+names(mri) <- c("hour", "minute", "freq", "int_pressure", "atm_pressure", "tot_pressure", "tesla")
+str(mri)
+```
+
+```{r}
+astsa::tsplot(mri$freq, main="Time-Index Plot of Data")
+```
+
+
+
+```{r}
+mri$freq[944] <- ((mri$freq[943] + mri$freq[946]) / 2)
+mri$freq[945] <- ((mri$freq[943] + mri$freq[946]) / 2)
+astsa::tsplot(mri$freq[920:970], main="Frequency Time Index Plot 920:970 - modified data")
+astsa::tsplot(mri$freq, main="Time Index Plot - modified data")
+```
+
+```{r}
+mri_diff <- diff(mri$freq)
+astsa::tsplot(mri_diff)
+```
+
+## Formal Tests for Stationarity
+
+Run the differenced series through the battery of unit root tests we learned about.
+
+```{r}
+# Dickey-Fuller Test
+tseries::adf.test(mri_diff, k=0)
+```
+
+```{r}
+# Augmented Dickey-Fuller Test
+tseries::adf.test(mri_diff)
+```
+
+```{r}
+# phillips-peron test
+tseries::pp.test(mri_diff)
+```
+
+
+## ARCH Models
+The series is apparently stationry - let's try variance modeling and see what happens.
+
+First, fit our top model:
+
+```{r}
+top_mod <- sarima(mri_diff, 3,0,2)
+innov <- top_mod$fit$residuals
+
+```
+
+
+```{r}
+acf2(innov^2, 24)
+```
+
+
+```{r}
+gnpgr = diff(log(gnp)) # get the growth rate
+mod <- sarima(gnpgr, 1, 0, 0) # fit an AR(1)
+acf2(mod$fit$residuals^2, 24) 
+```
+
+```{r}
+summary(garchFit(~arma(1,0)+garch(1,0), mri_diff))
+```
+
+```{r}
+plot(garchFit(~arma(1,0)+garch(1,0), mri_diff))
+```
