@@ -58,34 +58,40 @@ tseries::adf.test(mri_diff)
 tseries::pp.test(mri_diff)
 ```
 
+## ARIMA Fit
+Running the model we came up with previously.
 
-## ARCH Models
-The series is apparently stationry - let's try variance modeling and see what happens.
-
-First, fit our top model:
-
-```{r}
+```{r, message=F, results='hide'}
 top_mod <- sarima(mri_diff, 3,0,2)
-innov <- top_mod$fit$residuals
+```
 
+```{r, message=F, results='hide'}
+acf2(top_mod$fit$residuals)
+```
+
+```{r, message=F, results='hide'}
+acf2((top_mod$fit$residuals)^2, 100)
+```
+
+It honestly doesn't look like there is much to worry about here.  Regardless, let's fit an ARCH.
+
+```{r, message=F, results='hide'}
+garch_mod <- tseries::garch(mri_diff, trace=F)
+summary(garch_mod)
+acf2(garch_mod$residuals^2, 100)
+```
+
+```{r}
+summary(garch_mod2 <- fGarch::garchFit(~arma(1,0)+garch(1,0), mri_diff))
+```
+
+```{r, message=F, results='hide'}
+acf2((garch_mod2@residuals))
+acf2((garch_mod2@residuals)^2)
 ```
 
 
 ```{r}
-acf2(innov^2, 24)
+summary(garch_mod3 <- fGarch::garchFit(~garch(1,1), mri_diff))
 ```
 
-
-```{r}
-gnpgr = diff(log(gnp)) # get the growth rate
-mod <- sarima(gnpgr, 1, 0, 0) # fit an AR(1)
-acf2(mod$fit$residuals^2, 24) 
-```
-
-```{r}
-summary(garchFit(~arma(1,0)+garch(1,0), mri_diff))
-```
-
-```{r}
-plot(garchFit(~arma(1,0)+garch(1,0), mri_diff))
-```
